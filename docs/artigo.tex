@@ -1,0 +1,683 @@
+% Artigo — Simulador Relativístico (Física 4)
+% Compilar com:  tectonic artigo.tex
+\documentclass[10pt,a4paper,twocolumn]{article}
+
+\usepackage{fontspec}            % XeTeX: Unicode + acentos
+\usepackage[brazil]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{geometry}
+\geometry{a4paper, top=2.4cm, bottom=2.6cm, left=1.7cm, right=1.7cm, columnsep=0.65cm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\captionsetup{labelsep=period, font=small, skip=6pt}
+\usepackage{titlesec}
+\titleformat{\section}{\centering\normalsize}{\thesection.}{0.55em}{\MakeUppercase}
+\titleformat{\subsection}{\normalsize\itshape}{\thesubsection}{0.6em}{}
+\titlespacing{\section}{0pt}{14pt plus 3pt minus 2pt}{8pt plus 2pt}
+\titlespacing{\subsection}{0pt}{10pt plus 3pt minus 2pt}{5pt plus 1pt}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+\usepackage[hidelinks]{hyperref}
+\urlstyle{tt}
+
+\setlength{\parskip}{0pt}
+\setlength{\parindent}{1.2em}
+
+% Referências no estilo autor-ano com recuo deslocado
+\newenvironment{referencias}
+  {\section*{REFERÊNCIAS}\small
+   \begin{list}{}{\setlength{\leftmargin}{1.4em}\setlength{\itemindent}{-1.4em}%
+                  \setlength{\itemsep}{2pt}\setlength{\parsep}{0pt}}}
+  {\end{list}}
+
+\begin{document}
+
+\twocolumn[{
+  \begin{center}
+    {\large\bfseries Simulador Relativístico: Visualização Interativa em Tempo\\[0.25em]
+     Real dos Efeitos Ópticos da Relatividade Especial\,\textsuperscript{$\star$}\par}
+    \vspace{1.5em}
+    {\bfseries Sergio Roncato Maccari\,\textsuperscript{*}}\par
+    \vspace{1.1em}
+    {\small\itshape \textsuperscript{*}\,Faculdade de Engenharia de Computação, Universidade
+     Tecnológica Federal do Paraná,\\ PR (e-mail: sergiomaccari@alunos.utfpr.edu.br).}\par
+  \end{center}
+  \vspace{0.9em}
+  \hrule height 0.4pt
+  \vspace{1.0em}
+  {\small
+  \noindent\textbf{Abstract:} Special Relativity is usually taught through isolated formulas,
+  and students rarely develop a visual intuition of how the world would actually look at
+  speeds close to the speed of light. This work presents an interactive simulator, running
+  in real time in the web browser (TypeScript + Three.js/WebGL), that turns the canonical
+  equations of Special Relativity into a navigable 3D scene: Lorentz contraction, time
+  dilation, relativistic aberration (via the past light cone), the relativistic Doppler
+  effect and relativistic beaming, with color computed by spectral reconstruction against
+  CIE response curves. All the physics is evaluated per vertex on the GPU, in GLSL shaders,
+  which keeps the simulation interactive even on modest hardware. Three observation modes
+  (orbital laboratory, observer's eye and first person at constant velocity) let the user
+  separate what is \emph{measured} from what is \emph{seen}, which is the central conceptual
+  distinction of relativistic optics.\par
+  \vspace{0.6em}
+  \noindent\textbf{Resumo}: A Relatividade Especial costuma ser estudada por meio de fórmulas
+  isoladas, e o estudante raramente desenvolve uma intuição visual de como o mundo de fato
+  pareceria a velocidades próximas à da luz. Este trabalho apresenta um simulador interativo,
+  executado em tempo real no navegador (TypeScript + Three.js/WebGL), que transforma as
+  equações canônicas da Relatividade Especial em uma cena 3D navegável: contração de
+  Lorentz, dilatação do tempo, aberração relativística (via cone de luz passado), efeito
+  Doppler relativístico e \emph{beaming}, com a cor calculada por reconstrução espectral
+  com base nas curvas de resposta CIE. Toda a física é avaliada por vértice na GPU, em
+  \emph{shaders} GLSL, o que mantém a simulação interativa mesmo em máquinas modestas. Três
+  modos de observação (laboratório orbital, olho do observador e primeira pessoa a
+  velocidade constante) permitem separar o que se \emph{mede} do que se \emph{vê}, distinção
+  conceitual central da óptica relativística.\par
+  }
+  \vspace{0.8em}
+  {\small\itshape
+  \noindent Keywords: Special Relativity; Scientific Visualization; WebGL; Doppler Effect;
+  Computer Graphics.\par
+  \vspace{0.25em}
+  \noindent Palavras-chave: Relatividade Especial; Visualização Científica; WebGL; Efeito
+  Doppler; Computação Gráfica.\par
+  }
+  \vspace{0.7em}
+  \hrule height 0.4pt
+  \vspace{1.8em}
+}]
+
+{\let\thefootnote\relax\footnotetext{$^{\star}$ Trabalho desenvolvido na disciplina de
+Física 4.}}
+
+\section{Introdução}
+
+A Relatividade Especial, formulada por Einstein (1905), é apresentada nos cursos de
+graduação principalmente na forma de equações: a contração do comprimento, a dilatação do
+tempo e o efeito Doppler aparecem como fórmulas isoladas, verificadas em exercícios
+numéricos. O estudante raramente forma uma imagem mental coerente de \emph{como o mundo
+pareceria} a um viajante relativístico, em parte porque nenhuma experiência cotidiana se
+aproxima do regime $v \sim c$, em parte porque os efeitos nunca ocorrem isoladamente: a
+contração, o atraso de propagação da luz, a aberração, o desvio de cor e a variação de
+brilho são manifestações simultâneas de uma única estrutura geométrica, o espaço-tempo de
+Minkowski.
+
+Há ainda uma confusão conceitual recorrente no estudo introdutório da Relatividade
+Especial: tratar como sinônimos \emph{medir} e \emph{ver}. A contração de Lorentz é um fato
+de \emph{medida} (registro simultâneo, no referencial do observador, das duas extremidades
+de um objeto); já a \emph{imagem} captada por um olho ou câmera combina eventos
+passados, pois a luz tem velocidade finita. Terrell (1959) e Penrose (1959) mostraram,
+independentemente, que um objeto rápido de pequeno tamanho angular não parece achatado em
+uma fotografia, e sim girado. Distinguir esses dois conceitos exige visualizar os
+dois estágios separadamente, o que é inviável com figuras estáticas.
+
+Este trabalho apresenta um simulador interativo que preenche essa lacuna. Trata-se de uma
+aplicação \emph{web} de página única, escrita em TypeScript sobre a biblioteca Three.js
+(WebGL), na qual toda a física relativística é avaliada \emph{por vértice} na placa gráfica,
+em \emph{shaders} GLSL. O usuário ajusta a fração da velocidade da luz,
+$\beta = v/c$, e observa imediatamente o efeito combinado (ou isolado, pois cada efeito
+pode ser ligado e desligado individualmente) da contração de Lorentz, do tempo retardado
+(posição aparente), do efeito Doppler relativístico e do \emph{beaming} sobre uma mesma
+cena tridimensional.
+
+O recorte físico foi restrito ao domínio da Relatividade Especial em regime
+simples, coerente com o escopo de Física 4: fontes e observador movem-se com
+\emph{velocidade constante}, sem aceleração relativística e sem efeitos de Relatividade
+Geral. Essa restrição é suficiente para reproduzir corretamente os fenômenos visuais mais
+marcantes do movimento a alta velocidade, e a fundamentação teórica correspondente
+(Nussenzveig, 2014; Griffiths, 2017) é desenvolvida na Seção~2. A Seção~3 descreve a
+metodologia de implementação (arquitetura, algoritmos na GPU e modos de observação), a
+Seção~4 apresenta os resultados e as limitações do modelo, e a Seção~5 conclui.
+
+\section{Fundamentação Teórica}
+
+\subsection{Postulados e transformação de Lorentz}
+
+A Relatividade Especial repousa sobre dois postulados (Einstein, 1905): (i) as leis da
+física têm a mesma forma em todos os referenciais inerciais; (ii) a luz propaga-se no vácuo
+com a mesma velocidade $c$ em todos os referenciais inerciais, independentemente do
+movimento da fonte ou do observador. O segundo postulado, imposto pela evidência
+experimental de Michelson e Morley (1887), rompe com a cinemática galileana e obriga a
+revisão dos conceitos de espaço, tempo e simultaneidade.
+
+Para dois referenciais inerciais $S$ e $S'$, com $S'$ movendo-se com velocidade $v$ ao
+longo do eixo $x$ de $S$ e origens coincidentes em $t = t' = 0$, os postulados levam à
+\emph{transformação de Lorentz}:
+\begin{equation}
+  \begin{aligned}
+    t' &= \gamma\left(t - \frac{v\,x}{c^{2}}\right), \qquad &
+    x' &= \gamma\,(x - v\,t),\\
+    y' &= y, & z' &= z,
+  \end{aligned}
+  \label{eq:lorentz}
+\end{equation}
+com as grandezas adimensionais centrais de toda a teoria:
+\begin{equation}
+  \beta = \frac{v}{c} \in [0,1), \qquad
+  \gamma = \frac{1}{\sqrt{1-\beta^{2}}} \geq 1.
+  \label{eq:gamma}
+\end{equation}
+A transformação preserva o intervalo invariante
+$s^{2} = c^{2}t^{2} - x^{2} - y^{2} - z^{2}$, o que garante $c$ constante para todos os
+observadores. No simulador, trabalha-se sempre com a velocidade adimensional
+$\vec{\beta} = \vec{v}/c$, de modo que a geometria nunca depende explicitamente de $c$; o
+valor numérico de $c$ só reaparece na conversão de intervalos para segundos.
+
+\subsection{Contração do comprimento e dilatação do tempo}
+
+Da Eq.~\eqref{eq:lorentz} seguem os dois efeitos cinemáticos clássicos. Uma régua de
+comprimento próprio $L_{0}$, em repouso em $S'$ e alinhada ao movimento, tem as duas
+extremidades registradas \emph{no mesmo instante} por um observador em $S$; o comprimento
+medido é
+\begin{equation}
+  L = \frac{L_{0}}{\gamma} = L_{0}\sqrt{1-\beta^{2}}.
+  \label{eq:contracao}
+\end{equation}
+Um relógio em repouso em $S'$, marcando dois eventos separados pelo tempo próprio
+$\Delta\tau$, é medido em $S$ com o intervalo dilatado
+\begin{equation}
+  \Delta t = \gamma\,\Delta\tau \geq \Delta\tau .
+  \label{eq:dilatacao}
+\end{equation}
+Ambos os efeitos são exibidos diretamente pelo simulador: a contração, aplicada à geometria
+por vértice; a dilatação, por dois relógios analógicos no painel de leitura, com
+$d\tau = dt/\gamma$ integrado a cada quadro.
+
+\subsection{Adição relativística de velocidades}
+
+Se uma partícula tem velocidade $\vec{u}$ (em unidades de $c$) num referencial que, por sua
+vez, se move com $\vec{v}$ em relação ao laboratório, a velocidade composta não é a soma
+galileana. Decompondo $\vec{u}$ nas componentes paralela e perpendicular a $\vec{v}$,
+\begin{equation}
+  \vec{u}\,' =
+  \frac{\vec{u}_{\parallel} + \vec{v} + \vec{u}_{\perp}/\gamma_{v}}
+       {1 + \vec{u}\cdot\vec{v}},
+  \qquad
+  \gamma_{v} = \frac{1}{\sqrt{1-|\vec{v}|^{2}}}.
+  \label{eq:veladd}
+\end{equation}
+A Eq.~\eqref{eq:veladd} recupera o limite galileano quando $|\vec{u}|, |\vec{v}| \ll 1$ e
+satura em $c$: para movimentos colineares, $u' = (u+v)/(1+uv)$, de modo que $u = 1$ (luz)
+implica $u' = 1$ para qualquer $v$; o segundo postulado é respeitado automaticamente. O
+fator $1/\gamma_{v}$ na componente transversal é a origem geométrica da aberração da luz.
+Essa equação é implementada no núcleo de física do simulador e replicada em GLSL no
+\emph{shader} de vértice, onde é avaliada vértice a vértice para compor a velocidade de
+cada objeto com a do observador, garantindo $|\vec{\beta}| < 1$ em qualquer combinação.
+
+\subsection{Medir não é ver: o cone de luz passado}
+\label{sec:conedeluz}
+
+\emph{Medir} é uma operação idealizada e simultânea no referencial do observador; é o que a
+transformação de Lorentz descreve. \emph{Ver}, por outro lado, é capturar em um único
+ponto, o olho, todos os raios de luz que chegam agora. Como a luz tem velocidade
+finita, os fótons que atingem o olho neste instante partiram de pontos diferentes da fonte
+em \emph{instantes diferentes do passado}. A imagem não é um retrato instantâneo, mas uma
+costura de eventos sobre o cone de luz passado do evento de observação.
+
+Considere o observador na origem, no instante $t = 0$, e um ponto-fonte com posição
+$\vec{r}$ (em $t=0$) e velocidade constante $\vec{u}$ (em unidades de $c$). O instante
+passado $\tau \leq 0$ em que esse ponto emitiu a luz que chega agora satisfaz a
+\emph{condição de tempo retardado} $|\vec{r} + \vec{u}\,\tau| = -\tau$, que elevada ao
+quadrado dá a equação quadrática
+\begin{equation}
+  \bigl(|\vec{u}|^{2}-1\bigr)\,\tau^{2}
+  + 2\,(\vec{r}\cdot\vec{u})\,\tau
+  + |\vec{r}|^{2} = 0 .
+  \label{eq:quadratica}
+\end{equation}
+Das duas raízes reais, a solução física é a raiz \emph{retardada} ($\tau \leq 0$, sobre o
+cone de luz passado); a outra corresponderia ao cone futuro, sem significado para uma
+observação. A \emph{posição aparente} do ponto, isto é, a direção de onde a luz realmente
+chega, é
+\begin{equation}
+  \vec{r}_{\mathrm{ap}} = \vec{r} + \vec{u}\,\tau_{\mathrm{ret}} .
+  \label{eq:aparente}
+\end{equation}
+O simulador resolve a Eq.~\eqref{eq:quadratica} para \emph{cada vértice} da cena, a cada
+quadro. A Tabela~\ref{tab:medirver} resume a distinção conceitual que organiza toda a
+implementação.
+
+\begin{table}[t]
+  \centering
+  \caption{Medir versus ver: a distinção central da óptica relativística e sua
+           correspondência com as etapas do simulador.}
+  \label{tab:medirver}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Aspecto & Medir (Lorentz) & Ver (cone de luz) \\
+    \midrule
+    Operação    & simultânea no referencial & captura num ponto \\
+    Comprimento & contração $1/\gamma$      & rotação aparente \\
+    Direção     & --- (sem efeito)          & aberração \\
+    Frequência  & --- (medida local)        & Doppler $D$ \\
+    Brilho      & --- (sem efeito)          & \emph{beaming} $D^{3}$ \\
+    No shader   & \emph{boost} do vértice   & $\tau_{\mathrm{ret}}$, $D$, cor \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Aberração e rotação de Terrell--Penrose}
+
+A aberração é a mudança da direção aparente de um raio de luz na troca de referencial.
+Aplicando a Eq.~\eqref{eq:veladd} a um raio de luz, obtém-se a forma fechada
+\begin{equation}
+  \cos\theta' = \frac{\cos\theta + \beta}{1 + \beta\cos\theta},
+  \label{eq:aberracao}
+\end{equation}
+onde $\theta$ e $\theta'$ são os ângulos entre a linha de visada e a direção do movimento
+nos dois referenciais. Para $\beta \to 1$, quase toda a esfera celeste comprime-se para a
+frente: o céu inteiro parece tombar na direção do movimento. No simulador, a
+Eq.~\eqref{eq:aberracao} não é escrita explicitamente: ela \emph{emerge} da combinação do
+\emph{boost} de Lorentz com o deslocamento para a posição aparente da
+Eq.~\eqref{eq:aparente}.
+
+A mesma geometria explica o resultado de Terrell (1959) e Penrose (1959): a luz vinda da
+face mais distante de um objeto partiu mais cedo, quando o objeto estava em outra posição;
+o observador enxerga simultaneamente a face frontal e uma porção da face que
+geometricamente deveria estar oculta, exatamente como veria um objeto parado, porém
+girado do ângulo de aberração da linha de visada; quando o objeto é visto na direção
+perpendicular ao movimento, esse ângulo $\alpha$ satisfaz
+$\operatorname{sen}\alpha = \beta$. A câmera não fotografa a contração;
+fotografa uma rotação. Para objetos extensos e próximos somam-se deformações e encurvamento
+de linhas retas, que o simulador exibe naturalmente por aplicar a
+Eq.~\eqref{eq:quadratica} vértice a vértice (Figura~\ref{fig:aberracao}).
+
+\subsection{Efeito Doppler relativístico}
+
+O movimento também altera a frequência da luz recebida. Com $\hat{n}$ o versor que aponta
+do observador para a fonte e $\vec{\beta}$ a velocidade da fonte medida no referencial do
+observador, o \emph{fator Doppler} relativístico é
+\begin{equation}
+  D = \frac{f_{\mathrm{obs}}}{f_{\mathrm{emit}}}
+    = \frac{1}{\gamma\,\bigl(1 + \vec{\beta}\cdot\hat{n}\bigr)} ,
+  \label{eq:doppler}
+\end{equation}
+resultado da transformação de Lorentz do quadrivetor de onda: o fator $\gamma$ é a
+dilatação do tempo e o termo $1 + \vec{\beta}\cdot\hat{n}$ é o atraso/avanço geométrico.
+Os casos-limite são instrutivos. Na aproximação longitudinal,
+$D = \sqrt{(1+\beta)/(1-\beta)} > 1$ (desvio para o azul); no afastamento,
+$D = \sqrt{(1-\beta)/(1+\beta)} < 1$ (desvio para o vermelho); e na direção transversal,
+$D = 1/\gamma < 1$, o chamado \emph{Doppler transversal}, efeito puramente relativístico,
+sem análogo clássico e consequência direta da dilatação do tempo. O comprimento de onda
+observado escala como $\lambda_{\mathrm{obs}} = \lambda_{\mathrm{emit}}/D$.
+
+\subsection{Beaming relativístico (efeito holofote)}
+
+A intensidade específica $I_{\nu}/\nu^{3}$ é um invariante de Lorentz; disso decorre que a
+intensidade específica observada se transforma como
+\begin{equation}
+  I_{\nu,\mathrm{obs}}(\nu_{\mathrm{obs}}) = D^{3}\,I_{\nu,\mathrm{emit}}(\nu_{\mathrm{emit}}),
+  \label{eq:beaming}
+\end{equation}
+com as frequências correspondentes relacionadas por $\nu_{\mathrm{obs}} = D\,\nu_{\mathrm{emit}}$.
+Na origem do expoente, um fator $D$ vem do aumento da energia de cada fóton, um da taxa de
+chegada dos fótons e $D^{2}$ da concentração angular imposta pela aberração, com $D^{-1}$
+do alargamento da banda de frequência completando o balanço; a intensidade integrada em
+frequência escala como $D^{4}$. A consequência visual é o
+\emph{efeito holofote}: o que está à frente do movimento torna-se intensamente mais
+brilhante e azulado; o que está atrás escurece e avermelha.
+
+\subsection{Cor por reconstrução espectral}
+\label{sec:cor}
+
+Aplicar o desvio Doppler a uma cor RGB exige deslocar o \emph{espectro} da luz e medir
+novamente a resposta do olho, e não apenas mudar o tom no círculo cromático. O simulador
+converte a cor de
+repouso em três lóbulos gaussianos de emissão centrados em aproximadamente
+$615$, $550$ e $463\,\mathrm{nm}$; o fator $1/D$ desloca o centro e a largura de cada
+lóbulo; e cada lóbulo deslocado é multiplicado pelas curvas de resposta do
+olho $\bar{x},\bar{y},\bar{z}$ (CIE), aproximadas por somas de gaussianas conforme
+Wyman et al. (2013), e integrado analiticamente. O produto de duas gaussianas tem integral
+fechada, o que torna o cálculo barato o suficiente para rodar por vértice. Para desvios
+pequenos, a cor exibida é interpolada suavemente entre a cor de repouso e a cor
+reconstruída (com fração $\min(3\,|1/D-1|,\,1)$), de modo que o desvio cromático cresce de
+forma contínua com $\beta$.
+
+Uma consequência física do modelo: ele \emph{não reserva} energia em infravermelho ou
+ultravioleta. Em $\beta$ elevado, os três lóbulos visíveis podem ser empurrados para fora
+da faixa perceptível e o objeto escurece. O comportamento é coerente para um detector
+de banda limitada como o olho, embora uma fonte real de espectro largo repusesse parte do
+brilho com radiação vinda de fora do visível (ver Seção~\ref{sec:limitacoes}).
+
+\section{Metodologia}
+
+O desenvolvimento foi estruturado em três camadas: o \emph{núcleo} de física, o
+\emph{motor} de simulação e a \emph{interface}, com a física visível executada
+integralmente na GPU. A solução é uma aplicação \emph{web} estática: não há servidor de
+física; todo o cálculo roda no navegador do usuário.
+
+\subsection{Pilha tecnológica}
+
+A Tabela~\ref{tab:stack} lista as tecnologias utilizadas e seus papéis.
+
+\begin{table}[t]
+  \centering
+  \caption{Tecnologias utilizadas no projeto.}
+  \label{tab:stack}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.27\columnwidth}p{0.62\columnwidth}@{}}
+    \toprule
+    Tecnologia & Papel \\
+    \midrule
+    TypeScript & Lógica de aplicação com tipos estáticos: estado, modos,
+                 controladores e interface. \\
+    Three.js   & Cena 3D sobre WebGL: câmera em perspectiva, geometrias,
+                 laço de renderização. \\
+    GLSL       & \emph{Shaders} de vértice e fragmento escritos à mão; toda a
+                 física relativística visível. \\
+    Vite       & Servidor de desenvolvimento e empacotador de produção. \\
+    lil-gui    & Painel de controles (velocidade, efeitos, modos). \\
+    GitHub Actions e Pages & Publicação automática do site estático a cada
+                 \emph{push}. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Arquitetura e fluxo de dados}
+
+O código separa três responsabilidades: \texttt{core/} (física de Relatividade Especial,
+com $\gamma(\beta)$ e a adição de velocidades de Minkowski, e cenas pré-definidas),
+\texttt{engine/} (orquestração: laço de renderização, modos de observação, fábrica de
+materiais)
+e \texttt{ui/} (painel de controles e HUD de leitura). A cada quadro, a CPU calcula o vetor
+$\vec{\beta}$ do observador conforme o modo ativo e o entrega à GPU por meio de
+\emph{uniforms} (variáveis de entrada dos \emph{shaders}) compartilhados por
+referência entre todos os materiais da cena: uma única escrita por quadro atualiza todos
+os objetos simultaneamente, sem varrer a lista de materiais. A Figura~\ref{fig:pipeline}
+resume o fluxo.
+
+\begin{figure}[t]
+  \centering
+  \small
+  \begin{tikzpicture}[
+      node distance=3.5mm,
+      caixa/.style={draw, rounded corners=1pt, align=center, inner sep=4pt,
+                    text width=0.82\columnwidth},
+      etapa/.style={draw, rounded corners=1pt, align=center, inner sep=3pt,
+                    text width=0.70\columnwidth, fill=black!4},
+      seta/.style={-{Stealth[length=2mm]}, thick}
+    ]
+    \node[caixa] (cpu) {\textbf{CPU (TypeScript)}, a cada quadro:\\[1pt]
+      painel/teclado $\to$ modo $\to$ $\vec{\beta}$, posição do observador,\\
+      interruptores dos efeitos $\to$ \emph{uniforms} globais};
+    \node[caixa, below=of cpu] (vs) {\textbf{GPU: \emph{vertex shader}} (por vértice)};
+    \node[etapa, below=2.5mm of vs] (e1) {1. \emph{boost} de Lorentz: posição no instante
+      $t'=0$ do observador\\ $\Rightarrow$ contração do comprimento,
+      Eq.~\eqref{eq:contracao}};
+    \node[etapa, below=of e1] (e2) {2. cone de luz passado: raiz retardada da
+      Eq.~\eqref{eq:quadratica}\\ $\Rightarrow$ posição aparente, aberração};
+    \node[etapa, below=of e2] (e3) {3. fator Doppler $D$ [Eq.~\eqref{eq:doppler}] e
+      \emph{beaming} $D^{3}$ [Eq.~\eqref{eq:beaming}]};
+    \node[etapa, below=of e3] (e4) {4. reconstrução espectral da cor
+      (lóbulos $\times$ curvas CIE)};
+    \node[caixa, below=2.5mm of e4] (fs) {\textbf{GPU: \emph{fragment shader}}
+      (interpola a cor por pixel e aplica a opacidade)};
+    \draw[seta] (cpu) -- (vs);
+    \draw[seta] (e4) -- (fs);
+  \end{tikzpicture}
+  \caption{Pipeline de um quadro: a CPU prepara poucos valores por quadro e a GPU recalcula
+           a posição aparente e a cor de cada vértice de cada objeto.}
+  \label{fig:pipeline}
+\end{figure}
+
+\subsection{O algoritmo por vértice}
+
+O \emph{vertex shader} executa, para cada vértice, quatro etapas em sequência.
+
+\paragraph{Etapa 1: boost de Lorentz e contração.} A posição do vértice é transladada
+para um referencial com o observador na origem. Em seguida, busca-se a posição do objeto
+\emph{no instante presente do observador}, isto é, em $t' = 0$ do
+referencial que se move com $\vec{\beta}$. Impondo $t' = 0$ na transformação temporal da
+Eq.~\eqref{eq:lorentz} aplicada à linha de universo do vértice, obtém-se o instante de
+laboratório
+\begin{equation}
+  T_{p} = \frac{\vec{\beta}\cdot\vec{x}_{\mathrm{lab}}}
+               {1 - \vec{\beta}\cdot\vec{\beta}_{\mathrm{obj}}},
+  \label{eq:tp}
+\end{equation}
+e o \emph{boost} espacial, decomposto nas direções paralela e perpendicular a
+$\hat{\beta}$, leva à posição
+\begin{equation}
+  \begin{aligned}
+    \vec{r}_{0} &= \vec{X} + (\gamma - 1)\,(\hat{\beta}\cdot\vec{X})\,\hat{\beta}
+                   - \gamma\,\vec{\beta}\,T_{p},\\
+    \vec{X} &= \vec{x}_{\mathrm{lab}} + \vec{\beta}_{\mathrm{obj}}\,T_{p}.
+  \end{aligned}
+  \label{eq:boost}
+\end{equation}
+A contração nasce do corte de simultaneidade: como $T_{p}$ varia de vértice a vértice
+(relatividade da simultaneidade), a combinação do \emph{boost} com a avaliação de cada
+vértice no seu próprio $T_{p}$ reduz a coordenada paralela de um objeto em repouso no
+laboratório a $x_{\parallel}/\gamma$, que é exatamente a contração da
+Eq.~\eqref{eq:contracao} aparecendo na tela. A velocidade do objeto vista pelo observador
+é composta pela Eq.~\eqref{eq:veladd}.
+
+\paragraph{Etapa 2: posição aparente.} Com o efeito de aberração ligado, o shader
+resolve a quadrática da Eq.~\eqref{eq:quadratica} e seleciona a raiz física
+$\tau \leq 0$; para $|\vec{u}| < 1$ as duas raízes têm sempre sinais opostos e a
+escolha é unívoca. O vértice é deslocado para a posição aparente da
+Eq.~\eqref{eq:aparente}; guardas numéricas tratam o caso quase linear
+($|\vec{u}|^{2} \approx 1$, em que a quadrática degenera).
+
+\paragraph{Etapa 3: Doppler e beaming.} Define-se a linha de visada
+$\hat{n} = \vec{r}_{\mathrm{ap}}/|\vec{r}_{\mathrm{ap}}|$ e calcula-se o fator $D$ da
+Eq.~\eqref{eq:doppler} com a velocidade do objeto em relação ao observador (composta na
+Etapa 1) e o $\gamma$ correspondente. O brilho é multiplicado por
+$D^{3}$ quando o \emph{beaming} está ativo.
+
+\paragraph{Etapa 4: cor.} A cor de repouso passa pela reconstrução espectral da
+Seção~\ref{sec:cor}, com o deslocamento $\lambda_{\mathrm{obs}} =
+\lambda_{\mathrm{emit}}/D$, e o resultado é interpolado pela rasterização até o
+\emph{fragment shader}, que se limita a aplicar a opacidade.
+
+Cada efeito (contração, aberração, Doppler, \emph{beaming}) é controlado por um
+interruptor próprio no painel, passado ao shader como \emph{uniform} $0/1$ (mistura linear
+no caso da contração, desvio condicional nos demais). Assim, o estudante pode ligar um
+efeito de cada vez e identificar a contribuição de cada termo das equações.
+
+\subsection{Custo computacional: por vértice versus por pixel}
+
+A reconstrução espectral envolve várias exponenciais por lóbulo. A escolha de engenharia é
+\emph{onde} pagar esse custo: por \emph{pixel} (milhões de avaliações por quadro em tela
+cheia) ou por \emph{vértice} (tipicamente ordens de grandeza menos avaliações), com a placa
+interpolando linearmente o resultado ao longo de cada triângulo, no estilo do sombreamento
+de Gouraud. Adotou-se o cálculo por vértice, decisivo para manter interatividade em GPUs
+modestas. O preço é a possibilidade de artefatos de interpolação em malhas grosseiras;
+a mitigação é geométrica: as malhas da cena são subdivididas o suficiente para que a
+variação de cor entre vértices vizinhos seja pequena. Complementarmente, um seletor de
+qualidade ajusta a razão de pixels do renderizador (\emph{device pixel ratio}), reduzindo o
+número de fragmentos rasterizados em máquinas lentas.
+
+\subsection{Modos de observação}
+
+Três modos, selecionáveis no painel, definem como o vetor $\vec{\beta}$ e a câmera são
+construídos a cada quadro:
+
+\begin{enumerate}
+  \item \textbf{Laboratório (orbital):} câmera orbital externa; o observador conceitual
+        está na origem e $\vec{\beta}$ é montado a partir de um \emph{slider} de magnitude
+        e de um eixo escolhido. É o modo ideal para ver, de fora, a contração e a
+        deformação aparente da cena. Atalhos fixam $\gamma = 2$, $5$ e $10$ via
+        $\beta = \sqrt{1 - 1/\gamma^{2}}$.
+  \item \textbf{Olho do Observador:} o observador fica parado na origem e
+        \emph{$\vec{\beta}$ acompanha a direção do olhar}: virar o olho gira a direção do
+        movimento e, com ela, a região azulada (à frente) e avermelhada (atrás).
+  \item \textbf{Primeira pessoa:} navegação por teclado (WASD) com velocidade
+        constante: a cada instante o observador ocupa um referencial inercial bem
+        definido, coerente com o recorte de Física 4, sem fase de aceleração
+        relativística.
+\end{enumerate}
+
+Em todos os modos a magnitude é saturada ($|\vec{\beta}| \leq 0{,}9999$) para evitar
+$\gamma \to \infty$, e um painel de leitura (HUD) exibe $\beta$, $\gamma$,
+$L/L_{0} = 1/\gamma$, o fator de dilatação, a taxa de quadros (FPS) e dois relógios
+analógicos, um do laboratório e um do observador, integrados com $d\tau = dt/\gamma$, o
+que torna a dilatação do tempo visível em tempo real.
+
+\section{Resultados}
+
+\subsection{Efeitos observáveis}
+
+A Figura~\ref{fig:repouso} mostra a cena de referência em repouso ($\beta = 0$): um piso em
+grade, uma régua horizontal e uma galeria de sólidos coloridos. Nela, os dois relógios do
+HUD avançam juntos ($\gamma = 1$).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figuras/lab-repouso.png}
+  \caption{Cena do laboratório em repouso ($\beta = 0$, $\gamma = 1$): geometria e cores
+           originais; os dois relógios do HUD avançam no mesmo ritmo.}
+  \label{fig:repouso}
+\end{figure}
+
+Com $\beta = 0{,}7$ ao longo do eixo $x$ (Figura~\ref{fig:beta07}), aparecem
+simultaneamente: a contração das formas na direção do movimento
+($L/L_{0} = 71{,}4\%$, HUD); o desvio Doppler, com objetos azulados no sentido de
+aproximação, avermelhados no oposto e o piso exibindo o gradiente contínuo de cor ao
+longo da linha de visada; o \emph{beaming}, que escurece a região de recessão; e a
+dilatação do tempo nos relógios ($3{,}0$~s próprios contra $4{,}2$~s de laboratório,
+fator $\times 1{,}400 = \gamma$).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figuras/lab-beta07.png}
+  \caption{Mesma cena com $\beta = 0{,}7$: contração ($L/L_{0} = 71{,}4\%$), Doppler e
+           \emph{beaming}; os relógios exibem a dilatação $\gamma = 1{,}4$.}
+  \label{fig:beta07}
+\end{figure}
+
+Ligando a posição aparente (Figura~\ref{fig:aberracao}), o tempo retardado da
+Eq.~\eqref{eq:quadratica} desloca cada vértice individualmente: colunas retas aparecem
+encurvadas e os sólidos, girados. É a manifestação, para objetos extensos, da
+rotação de Terrell--Penrose, e a diferença visual direta entre \emph{o que se mede}
+(Figura~\ref{fig:beta07}) e \emph{o que se vê} (Figura~\ref{fig:aberracao}).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figuras/lab-aberracao.png}
+  \caption{$\beta = 0{,}7$ com posição aparente (cone de luz passado) ligada: colunas
+           retas aparecem encurvadas e os sólidos girados (Terrell--Penrose).}
+  \label{fig:aberracao}
+\end{figure}
+
+No modo Olho do Observador (Figura~\ref{fig:olho}), o observador parado na origem ``olha''
+na direção do próprio movimento: mesmo a $\beta = 0{,}25$ o azulamento à frente é nítido,
+com o gradiente de cor varrendo continuamente a cena conforme a linha de visada se afasta
+da direção do movimento.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figuras/olho-beta025.png}
+  \caption{Modo Olho do Observador, $\beta = 0{,}25$ na direção do olhar: desvio para o
+           azul à frente, com gradiente contínuo de cor pela cena.}
+  \label{fig:olho}
+\end{figure}
+
+Em $\beta = 0{,}9$ (Figura~\ref{fig:beta09}), o deslocamento espectral é tão intenso que a
+luz visível de vários objetos sai da faixa perceptível e eles escurecem, consequência
+prevista do modelo de cor sem reserva espectral (Seção~\ref{sec:cor}): o azul intenso
+some no ultravioleta adiante e o vermelho, no infravermelho atrás.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figuras/lab-beta09.png}
+  \caption{$\beta = 0{,}9$ ($\gamma = 2{,}294$): objetos escurecem quando sua luz visível
+           é deslocada para fora da faixa perceptível, comportamento esperado do modelo
+           de cor de banda limitada.}
+  \label{fig:beta09}
+\end{figure}
+
+\subsection{Desempenho}
+
+Por concentrar a física no \emph{vertex shader} e manter o \emph{fragment shader} trivial,
+a simulação sustenta taxas interativas (dezenas de quadros por segundo) mesmo em
+renderização por \emph{software}, sem GPU dedicada; as capturas das figuras, feitas
+nessas condições, registram entre 38 e 60~FPS no HUD. Em hardware comum com aceleração
+gráfica, a taxa é limitada pelo sincronismo da tela. O seletor de qualidade reduz a razão
+de pixels do renderizador quando necessário, e o medidor de FPS do HUD permite ao usuário
+calibrar o ajuste.
+
+\subsection{Limitações e simplificações}
+\label{sec:limitacoes}
+
+A Tabela~\ref{tab:limitacoes} consolida as simplificações adotadas, sua natureza e o
+efeito principal de cada uma. Duas delas merecem comentário. O modelo de cor não reserva
+energia em infravermelho/ultravioleta: em $\beta$ alto, objetos escurecem em vez de exibir
+o brilho que uma fonte real de espectro largo manteria, embora o comportamento qualitativo
+do desvio (azular/avermelhar) permaneça correto. Além disso, o escopo restringe-se a
+velocidade constante: as transformações aplicadas a cada quadro são rigorosamente corretas
+para o referencial inercial instantâneo, mas as trocas de velocidade são idealizadas, sem
+a fase de aceleração contínua e sem os fenômenos associados, como a precessão de Thomas,
+restrição alinhada ao nível de Física 4.
+
+\begin{table}[t]
+  \centering
+  \caption{Principais simplificações do modelo e seus efeitos.}
+  \label{tab:limitacoes}
+  \footnotesize
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.34\columnwidth}%
+                     >{\raggedright\arraybackslash}p{0.19\columnwidth}%
+                     >{\raggedright\arraybackslash}p{0.38\columnwidth}@{}}
+    \toprule
+    Simplificação & Natureza & Efeito principal \\
+    \midrule
+    Cor sem reserva IR/UV     & modelo de cor  & escurecimento em $\beta$ alto \\
+    Sem iluminação/sombras    & renderização   & aparência autoluminosa \\
+    Velocidade constante      & escopo (RE)    & sem aceleração relativística \\
+    Cor por vértice (Gouraud) & desempenho     & artefatos em malha grosseira \\
+    Unidades arbitrárias, $c$ ajustável & didática & só razões ($\beta$, $\gamma$, $D$) fiéis \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Disponibilidade}
+
+O simulador está publicado e pode ser executado em qualquer navegador moderno, sem
+instalação:
+\begin{center}\small
+  \url{https://sergiomaccari.github.io/Simulador-Relativ-stico/}
+\end{center}
+O código-fonte completo (TypeScript, GLSL e este documento) está disponível em:
+\begin{center}\small
+  \url{https://github.com/sergiomaccari/Simulador-Relativ-stico}
+\end{center}
+Para execução local bastam \texttt{npm install} e \texttt{npm run dev} na raiz do
+repositório.
+
+\section{Conclusão}
+
+O simulador desenvolvido demonstra que os efeitos ópticos da Relatividade Especial
+(contração de Lorentz, dilatação do tempo, aberração via cone de luz passado, efeito
+Doppler relativístico e \emph{beaming}) podem ser visualizados de forma interativa,
+quantitativa e fisicamente fundamentada em uma aplicação \emph{web} aberta, sem
+instalação. A implementação por vértice na GPU mostrou-se suficiente para manter
+interatividade mesmo sem aceleração gráfica dedicada. Os interruptores individuais de
+cada efeito, junto da distinção explícita entre \emph{medir} (transformação de Lorentz) e
+\emph{ver} (tempo retardado), dão ao estudante um laboratório visual em que cada termo das
+equações canônicas tem uma contrapartida observável na tela. Extensões naturais incluem a reserva espectral em
+infravermelho/ultravioleta no modelo de cor, o cálculo do Doppler por fragmento e um modo
+avançado com movimento acelerado (hiperbólico), este último já fora do escopo de Física 4.
+
+\begin{referencias}
+  \item Einstein, A. (1905). Zur Elektrodynamik bewegter Körper. \emph{Annalen der
+        Physik}, 17, 891--921.
+  \item Griffiths, D.J. (2017). \emph{Introduction to Electrodynamics}. 4th ed.
+        Cambridge University Press, Cambridge.
+  \item Michelson, A.A. e Morley, E.W. (1887). On the relative motion of the Earth and
+        the luminiferous ether. \emph{American Journal of Science}, 34, 333--345.
+  \item Nussenzveig, H.M. (2014). \emph{Curso de Física Básica, vol. 4: Ótica,
+        Relatividade, Física Quântica}. 2ª ed. Blucher, São Paulo.
+  \item Penrose, R. (1959). The apparent shape of a relativistically moving sphere.
+        \emph{Proceedings of the Cambridge Philosophical Society}, 55(1), 137--139.
+  \item Terrell, J. (1959). Invisibility of the Lorentz contraction. \emph{Physical
+        Review}, 116(4), 1041--1045.
+  \item Wyman, C., Sloan, P.-P. e Shirley, P. (2013). Simple analytic approximations to
+        the CIE XYZ color matching functions. \emph{Journal of Computer Graphics
+        Techniques}, 2(2), 1--11.
+\end{referencias}
+
+\end{document}
