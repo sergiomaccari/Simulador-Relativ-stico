@@ -151,7 +151,7 @@ export class Simulator {
   }
 
   private onEyeDown(e: MouseEvent): void {
-    if (this.state.mode !== 'eye') return;
+    if (this.state.mode !== 'eye' || e.button !== 0) return;
     this.eyeDragging = true;
     this.eyeLastX = e.clientX;
     this.eyeLastY = e.clientY;
@@ -160,6 +160,12 @@ export class Simulator {
 
   private onEyeMove(e: MouseEvent): void {
     if (this.state.mode !== 'eye' || !this.eyeDragging) return;
+    // mouseup perdido (menu de contexto, alt-tab no meio do arrasto): se o
+    // botão principal não está mais pressionado, encerra o arrasto
+    if ((e.buttons & 1) === 0) {
+      this.onEyeUp();
+      return;
+    }
     const sens = 0.005;
     this.eyeYaw -= (e.clientX - this.eyeLastX) * sens;
     this.eyePitch -= (e.clientY - this.eyeLastY) * sens;
@@ -195,7 +201,11 @@ export class Simulator {
     this.lastT = performance.now();
     const loop = (t: number) => {
       requestAnimationFrame(loop);
-      const raw = (t - this.lastT) / 1000;
+      // `t` é o início do quadro e pode ser ANTERIOR ao performance.now() de
+      // start(), o que dava um dt negativo no primeiro quadro. Como o relógio
+      // do observador soma dt/γ, um dt negativo o deixava adiantado em relação
+      // ao do laboratório. Piso em zero.
+      const raw = Math.max((t - this.lastT) / 1000, 0);
       this.lastT = t;
       // FPS: média numa janela de ~0.5 s (usa o delta real, não o limitado)
       this.fpsFrames++;
@@ -271,7 +281,6 @@ export class Simulator {
       this.beta.copy(AXES[s.betaAxis]).multiplyScalar(Math.min(s.betaMag, BETA_MAX));
       this.playerPos.set(0, 0, 0);
       this.controls.update();
-      this.readout.speed = s.betaMag * s.c;
     } else if (s.mode === 'eye') {
       // parado na origem; você "se move" PARA ONDE OLHA (β segue o olhar),
       // então virar o olho gira a direção do movimento e muda de onde vêm as cores
@@ -282,17 +291,18 @@ export class Simulator {
       this.camera.getWorldDirection(this.eyeForward);
       this.beta.copy(this.eyeForward).multiplyScalar(Math.min(s.betaMag, BETA_MAX));
       this.playerPos.set(0, 0, 0);
-      this.readout.speed = s.betaMag * s.c;
     } else if (!paused) {
       this.fp.update(dt, s.c);
       this.beta.copy(this.fp.beta);
       this.playerPos.copy(this.fp.position);
       g = gamma(this.beta.length());
-      this.readout.speed = this.fp.velocity.length();
     } else {
       // congela: mantém β, posição e relógios do último quadro
       g = gamma(this.beta.length());
     }
+    // velocidade exibida no HUD sempre coerente com o β corrente (v = |β|·c),
+    // inclusive na pausa e na troca de modo
+    this.readout.speed = this.beta.length() * s.c;
 
     const effects: RelEffects = {
       beta: this.beta,

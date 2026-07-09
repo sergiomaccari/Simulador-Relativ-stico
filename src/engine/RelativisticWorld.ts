@@ -3,11 +3,37 @@ import {
   Vector3,
   Color,
   DoubleSide,
+  DataTexture,
+  RGBAFormat,
+  FloatType,
+  NearestFilter,
+  ClampToEdgeWrapping,
   type Side,
   type ColorRepresentation,
 } from 'three';
 import vertexShader from '../shaders/relativistic.vert.glsl?raw';
 import fragmentShader from '../shaders/relativistic.frag.glsl?raw';
+import {
+  buildDopplerLutData,
+  LUT_SIZE,
+  LOG_SHIFT_MIN,
+  LOG_SHIFT_MAX,
+} from '../core/spectrum';
+
+/**
+ * Tabela de reconstrução espectral: LUT_SIZE × 3 texels float. Construída uma
+ * única vez, na CPU, e compartilhada por todos os materiais.
+ */
+function createDopplerLut(): DataTexture {
+  const tex = new DataTexture(buildDopplerLutData(), LUT_SIZE, 3, RGBAFormat, FloatType);
+  tex.minFilter = NearestFilter; // a interpolação é feita à mão, no shader
+  tex.magFilter = NearestFilter;
+  tex.wrapS = ClampToEdgeWrapping;
+  tex.wrapT = ClampToEdgeWrapping;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
 
 /** Estado dos efeitos relativísticos, aplicado aos uniforms globais a cada frame. */
 export interface RelEffects {
@@ -43,6 +69,10 @@ export class RelativisticWorld {
     uAberration: { value: 0 },
     uDoppler: { value: 1 },
     uBeaming: { value: 1 },
+    uDopplerLut: { value: createDopplerLut() },
+    uLutSize: { value: LUT_SIZE },
+    uLogShiftMin: { value: LOG_SHIFT_MIN },
+    uLogShiftMax: { value: LOG_SHIFT_MAX },
   };
 
   private materials: ShaderMaterial[] = [];
@@ -58,6 +88,10 @@ export class RelativisticWorld {
         uAberration: this.globals.uAberration,
         uDoppler: this.globals.uDoppler,
         uBeaming: this.globals.uBeaming,
+        uDopplerLut: this.globals.uDopplerLut,
+        uLutSize: this.globals.uLutSize,
+        uLogShiftMin: this.globals.uLogShiftMin,
+        uLogShiftMax: this.globals.uLogShiftMax,
         // por objeto
         uObjectBeta: { value: (opts.objectBeta ?? new Vector3()).clone() },
         uBaseColor: { value: new Color(opts.color) },
@@ -86,5 +120,6 @@ export class RelativisticWorld {
   dispose(): void {
     for (const m of this.materials) m.dispose();
     this.materials.length = 0;
+    this.globals.uDopplerLut.value.dispose();
   }
 }

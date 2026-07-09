@@ -1,4 +1,5 @@
 import type { SimReadout, SimState } from '../engine/Simulator';
+import { t } from './i18n';
 
 /** Período do ponteiro dos relógios: 1 volta a cada CLOCK_PERIOD segundos. */
 const CLOCK_PERIOD = 5;
@@ -10,38 +11,47 @@ const CLOCK_PERIOD = 5;
  * laboratório: você é o "gêmeo viajante" e acumula menos tempo (dτ = dt/γ).
  */
 export class Hud {
-  private elBeta: HTMLElement;
-  private elGamma: HTMLElement;
-  private elContraction: HTMLElement;
-  private elDilation: HTMLElement;
-  private elSpeed: HTMLElement;
-  private elFps: HTMLElement;
-  private elObsTime: HTMLElement;
-  private elLabTime: HTMLElement;
-  private obsCtx: CanvasRenderingContext2D;
-  private labCtx: CanvasRenderingContext2D;
+  private elBeta!: HTMLElement;
+  private elGamma!: HTMLElement;
+  private elContraction!: HTMLElement;
+  private elDilation!: HTMLElement;
+  private elSpeed!: HTMLElement;
+  private elFps!: HTMLElement;
+  private elObsTime!: HTMLElement;
+  private elLabTime!: HTMLElement;
+  private obsCtx!: CanvasRenderingContext2D;
+  private labCtx!: CanvasRenderingContext2D;
 
   constructor() {
+    this.renderSkeleton();
+  }
+
+  /** Reconstrói os rótulos no idioma atual (chamado também na troca de idioma). */
+  refreshLang(): void {
+    this.renderSkeleton();
+  }
+
+  private renderSkeleton(): void {
     const root = document.getElementById('hud');
     if (!root) throw new Error('Elemento #hud não encontrado');
 
     root.innerHTML = `
       <div class="hud-row"><span class="hud-label">β = v/c</span><span class="hud-value accent" id="hud-beta">0</span></div>
       <div class="hud-row"><span class="hud-label">γ (Lorentz)</span><span class="hud-value" id="hud-gamma">1</span></div>
-      <div class="hud-row"><span class="hud-label">comprimento L/L₀</span><span class="hud-value" id="hud-contraction">100%</span></div>
-      <div class="hud-row"><span class="hud-label">dilatação do tempo</span><span class="hud-value" id="hud-dilation">×1</span></div>
-      <div class="hud-row"><span class="hud-label">velocidade v</span><span class="hud-value" id="hud-speed">0</span></div>
+      <div class="hud-row"><span class="hud-label">${t('hudLength')}</span><span class="hud-value" id="hud-contraction">100%</span></div>
+      <div class="hud-row"><span class="hud-label">${t('hudDilation')}</span><span class="hud-value" id="hud-dilation">×1</span></div>
+      <div class="hud-row"><span class="hud-label">${t('hudSpeed')}</span><span class="hud-value" id="hud-speed">0</span></div>
       <div class="hud-row"><span class="hud-label">FPS</span><span class="hud-value" id="hud-fps">—</span></div>
       <div class="hud-sep"></div>
       <div class="hud-clocks">
         <div class="clock">
           <canvas id="clock-obs" width="68" height="68"></canvas>
-          <div class="clock-name">você</div>
+          <div class="clock-name">${t('hudYou')}</div>
           <div class="hud-value accent" id="hud-obstime">0.0 s</div>
         </div>
         <div class="clock">
           <canvas id="clock-lab" width="68" height="68"></canvas>
-          <div class="clock-name">laboratório</div>
+          <div class="clock-name">${t('hudLab')}</div>
           <div class="hud-value" id="hud-labtime">0.0 s</div>
         </div>
       </div>
@@ -64,7 +74,7 @@ export class Hud {
     this.elGamma.textContent = r.gamma.toFixed(3);
     this.elContraction.textContent = `${(r.contraction * 100).toFixed(1)}%`;
     this.elDilation.textContent = `×${r.gamma.toFixed(3)}`;
-    this.elSpeed.textContent = `${r.speed.toFixed(1)} / ${r.c.toFixed(0)} u/s`;
+    this.elSpeed.textContent = `${r.speed.toFixed(1)} / ${r.c.toFixed(0)} ${t('unitsPerSecond')}`;
     this.elFps.textContent = r.fps > 0 ? r.fps.toFixed(0) : '—';
     this.elObsTime.textContent = `${r.observerTime.toFixed(1)} s`;
     this.elLabTime.textContent = `${r.labTime.toFixed(1)} s`;

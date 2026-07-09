@@ -56,8 +56,9 @@
   equations of Special Relativity into a navigable 3D scene: Lorentz contraction, time
   dilation, relativistic aberration (via the past light cone), the relativistic Doppler
   effect and relativistic beaming, with color computed by spectral reconstruction against
-  CIE response curves. All the physics is evaluated per vertex on the GPU, in GLSL shaders,
-  which keeps the simulation interactive even on modest hardware. Three observation modes
+  CIE response curves. All the per-frame visible physics is evaluated per vertex on the GPU,
+  in GLSL shaders, and the spectral-reconstruction integral is solved once on the CPU at
+  start-up, which keeps the simulation interactive even on modest hardware. Three observation modes
   (orbital laboratory, observer's eye and first person at constant velocity) let the user
   separate what is \emph{measured} from what is \emph{seen}, which is the central conceptual
   distinction of relativistic optics.\par
@@ -69,8 +70,10 @@
   equações canônicas da Relatividade Especial em uma cena 3D navegável: contração de
   Lorentz, dilatação do tempo, aberração relativística (via cone de luz passado), efeito
   Doppler relativístico e \emph{beaming}, com a cor calculada por reconstrução espectral
-  com base nas curvas de resposta CIE. Toda a física é avaliada por vértice na GPU, em
-  \emph{shaders} GLSL, o que mantém a simulação interativa mesmo em máquinas modestas. Três
+  com base nas curvas de resposta CIE. Toda a física visível a cada quadro é avaliada por
+  vértice na GPU, em \emph{shaders} GLSL, e a integral da reconstrução espectral é resolvida
+  uma única vez na CPU, na inicialização, o que mantém a simulação interativa mesmo em
+  máquinas modestas. Três
   modos de observação (laboratório orbital, olho do observador e primeira pessoa a
   velocidade constante) permitem separar o que se \emph{mede} do que se \emph{vê}, distinção
   conceitual central da óptica relativística.\par
@@ -89,7 +92,8 @@
 }]
 
 {\let\thefootnote\relax\footnotetext{$^{\star}$ Trabalho desenvolvido na disciplina de
-Física 4.}}
+Física 4. A versão em inglês deste artigo está disponível no mesmo repositório
+(\texttt{docs/artigo-en.pdf}).}}
 
 \section{Introdução}
 
@@ -111,6 +115,21 @@ passados, pois a luz tem velocidade finita. Terrell (1959) e Penrose (1959) most
 independentemente, que um objeto rápido de pequeno tamanho angular não parece achatado em
 uma fotografia, e sim girado. Distinguir esses dois conceitos exige visualizar os
 dois estágios separadamente, o que é inviável com figuras estáticas.
+
+Atacar essa lacuna por meio de visualização interativa não é uma ideia nova, e a
+referência mais influente vem do MIT Game Lab. O jogo \emph{A Slower Speed of Light}
+(Kortemeyer et al., 2013) coloca o jogador em um mundo onde a velocidade da luz cai
+progressivamente até a escala do caminhar, e o \emph{OpenRelativity} (MIT Game Lab, 2013;
+Sherin et al., 2016) generaliza aquele motor em um conjunto de ferramentas de código
+aberto para a \emph{engine} Unity. Esses projetos consolidaram o repertório visual hoje
+canônico da área, isto é, contração, aberração, Doppler e \emph{beaming} aplicados a uma
+cena navegável, e são a inspiração declarada deste trabalho. A diferença de recorte está
+no meio de execução e no público-alvo: o OpenRelativity pressupõe a instalação da Unity e
+a compilação de um projeto, ao passo que o simulador aqui descrito foi escrito do zero
+como uma página \emph{web} estática, em TypeScript e GLSL sobre WebGL, que abre em
+qualquer navegador moderno sem instalação e sem hardware dedicado. A prioridade de projeto
+foi baixar ao máximo a barreira de acesso do estudante de graduação que quer simplesmente
+ver o fenômeno.
 
 Este trabalho apresenta um simulador interativo que preenche essa lacuna. Trata-se de uma
 aplicação \emph{web} de página única, escrita em TypeScript sobre a biblioteca Three.js
@@ -325,20 +344,47 @@ brilhante e azulado; o que está atrás escurece e avermelha.
 
 Aplicar o desvio Doppler a uma cor RGB exige deslocar o \emph{espectro} da luz e medir
 novamente a resposta do olho, e não apenas mudar o tom no círculo cromático. O simulador
-converte a cor de
-repouso em três lóbulos gaussianos de emissão centrados em aproximadamente
-$615$, $550$ e $463\,\mathrm{nm}$; o fator $1/D$ desloca o centro e a largura de cada
-lóbulo; e cada lóbulo deslocado é multiplicado pelas curvas de resposta do
-olho $\bar{x},\bar{y},\bar{z}$ (CIE), aproximadas por somas de gaussianas conforme
-Wyman et al. (2013), e integrado analiticamente. O produto de duas gaussianas tem integral
-fechada, o que torna o cálculo barato o suficiente para rodar por vértice. Para desvios
-pequenos, a cor exibida é interpolada suavemente entre a cor de repouso e a cor
-reconstruída (com fração $\min(3\,|1/D-1|,\,1)$), de modo que o desvio cromático cresce de
-forma contínua com $\beta$.
+modela o espectro de emissão como a soma de três gaussianas de \emph{área unitária}, uma
+por primária sRGB, centradas nos comprimentos de onda dominantes dessas primárias
+($611{,}4$, $549{,}1$ e $464{,}2\,\mathrm{nm}$) e com largura a meia altura de
+$40\,\mathrm{nm}$, ordem de grandeza da largura espectral de um emissor de tela real.
+
+Sob um desvio $s = \lambda_{\mathrm{obs}}/\lambda_{\mathrm{emit}} = 1/D$, a conservação do
+número de fótons implica $f_{\mathrm{obs}}(\lambda) = f_{\mathrm{emit}}(\lambda/s)/s$, de
+modo que uma gaussiana permanece gaussiana com centro e largura escalados por $s$:
+\begin{equation}
+  \mathcal{N}(\lambda;\,\mu,\,\sigma) \;\longmapsto\;
+  \mathcal{N}(\lambda;\,s\mu,\,s\sigma).
+  \label{eq:lobeshift}
+\end{equation}
+A intensidade não entra aqui; ela é o \emph{beaming} $D^{3}$, aplicado à parte. O XYZ
+observado é então a integral do espectro deslocado contra as curvas de resposta do olho
+$\bar{x},\bar{y},\bar{z}$ (CIE 1931, $2^{\circ}$), para as quais se adota o ajuste
+multi-lóbulo de gaussianas \emph{enviesadas} de Wyman et al. (2013).
+
+Como todo o caminho $\mathrm{RGB} \to$ espectro $\to$ desvio $\to$ CIE $\to
+\mathrm{XYZ} \to \mathrm{RGB}$ é linear no RGB de repouso, ele colapsa, para cada $s$, em
+uma única matriz $3\times3$:
+\begin{equation}
+  \mathbf{C}(s) = \mathbf{M}_{\mathrm{XYZ}\to\mathrm{RGB}}\;\mathbf{P}(s)\;
+                  \bigl[\mathbf{M}_{\mathrm{XYZ}\to\mathrm{RGB}}\,\mathbf{P}(1)\bigr]^{-1},
+  \label{eq:cormatriz}
+\end{equation}
+onde as colunas de $\mathbf{P}(s)$ são o XYZ de cada primária deslocada. O ajuste
+enviesado não tem integral elementar contra uma gaussiana, e a integração é feita
+numericamente na CPU, \emph{uma única vez} na inicialização, para $512$ valores de $s$
+espaçados logaritmicamente em $[1/200,\,200]$. As matrizes resultantes vão para uma
+textura, e o \emph{shader} faz apenas uma interpolação e um produto matriz-vetor por
+vértice, sem nenhuma exponencial.
+
+A normalização da Eq.~\eqref{eq:cormatriz} garante $\mathbf{C}(1) = \mathbf{I}$ por
+construção (verificado numericamente com erro máximo de $2{,}2\times10^{-16}$): em repouso
+a cor exibida é \emph{exatamente} a cor de repouso, sem necessidade de qualquer
+interpolação corretiva entre a cor original e a reconstruída.
 
 Uma consequência física do modelo: ele \emph{não reserva} energia em infravermelho ou
-ultravioleta. Em $\beta$ elevado, os três lóbulos visíveis podem ser empurrados para fora
-da faixa perceptível e o objeto escurece. O comportamento é coerente para um detector
+ultravioleta. Em $\beta$ elevado, as três gaussianas visíveis podem ser empurradas para
+fora da faixa perceptível e o objeto escurece. O comportamento é coerente para um detector
 de banda limitada como o olho, embora uma fonte real de espectro largo repusesse parte do
 brilho com radiação vinda de fora do visível (ver Seção~\ref{sec:limitacoes}).
 
@@ -411,8 +457,8 @@ resume o fluxo.
       Eq.~\eqref{eq:quadratica}\\ $\Rightarrow$ posição aparente, aberração};
     \node[etapa, below=of e2] (e3) {3. fator Doppler $D$ [Eq.~\eqref{eq:doppler}] e
       \emph{beaming} $D^{3}$ [Eq.~\eqref{eq:beaming}]};
-    \node[etapa, below=of e3] (e4) {4. reconstrução espectral da cor
-      (lóbulos $\times$ curvas CIE)};
+    \node[etapa, below=of e3] (e4) {4. cor: matriz $\mathbf{C}(s)$ da tabela espectral
+      [Eq.~\eqref{eq:cormatriz}]};
     \node[caixa, below=2.5mm of e4] (fs) {\textbf{GPU: \emph{fragment shader}}
       (interpola a cor por pixel e aplica a opacidade)};
     \draw[seta] (cpu) -- (vs);
@@ -480,9 +526,15 @@ efeito de cada vez e identificar a contribuição de cada termo das equações.
 
 \subsection{Custo computacional: por vértice versus por pixel}
 
-A reconstrução espectral envolve várias exponenciais por lóbulo. A escolha de engenharia é
-\emph{onde} pagar esse custo: por \emph{pixel} (milhões de avaliações por quadro em tela
-cheia) ou por \emph{vértice} (tipicamente ordens de grandeza menos avaliações), com a placa
+A reconstrução espectral é uma integral numérica sobre a faixa visível, cara demais para
+ser avaliada em tempo real. A escolha de engenharia foi movê-la inteiramente para fora do
+laço de renderização: como a Eq.~\eqref{eq:cormatriz} mostra que o resultado depende de um
+único parâmetro escalar $s$, a integral é resolvida na CPU na inicialização e tabelada.
+Resta ao \emph{shader} uma busca em textura e um produto matriz-vetor, sem exponenciais.
+
+A segunda escolha é \emph{onde} pagar o custo residual: por \emph{pixel} (milhões de
+avaliações por quadro em tela cheia) ou por \emph{vértice} (tipicamente ordens de grandeza
+menos avaliações), com a placa
 interpolando linearmente o resultado ao longo de cada triângulo, no estilo do sombreamento
 de Gouraud. Adotou-se o cálculo por vértice, decisivo para manter interatividade em GPUs
 modestas. O preço é a possibilidade de artefatos de interpolação em malhas grosseiras;
@@ -515,7 +567,8 @@ Em todos os modos a magnitude é saturada ($|\vec{\beta}| \leq 0{,}9999$) para e
 $\gamma \to \infty$, e um painel de leitura (HUD) exibe $\beta$, $\gamma$,
 $L/L_{0} = 1/\gamma$, o fator de dilatação, a taxa de quadros (FPS) e dois relógios
 analógicos, um do laboratório e um do observador, integrados com $d\tau = dt/\gamma$, o
-que torna a dilatação do tempo visível em tempo real.
+que torna a dilatação do tempo visível em tempo real. A interface oferece os idiomas
+português e inglês, selecionáveis no painel de controles.
 
 \section{Resultados}
 
@@ -538,7 +591,7 @@ simultaneamente: a contração das formas na direção do movimento
 ($L/L_{0} = 71{,}4\%$, HUD); o desvio Doppler, com objetos azulados no sentido de
 aproximação, avermelhados no oposto e o piso exibindo o gradiente contínuo de cor ao
 longo da linha de visada; o \emph{beaming}, que escurece a região de recessão; e a
-dilatação do tempo nos relógios ($3{,}0$~s próprios contra $4{,}2$~s de laboratório,
+dilatação do tempo nos relógios ($3{,}5$~s próprios contra $4{,}9$~s de laboratório,
 fator $\times 1{,}400 = \gamma$).
 
 \begin{figure}[t]
@@ -595,7 +648,7 @@ some no ultravioleta adiante e o vermelho, no infravermelho atrás.
 Por concentrar a física no \emph{vertex shader} e manter o \emph{fragment shader} trivial,
 a simulação sustenta taxas interativas (dezenas de quadros por segundo) mesmo em
 renderização por \emph{software}, sem GPU dedicada; as capturas das figuras, feitas
-nessas condições, registram entre 38 e 60~FPS no HUD. Em hardware comum com aceleração
+nessas condições, registram entre 23 e 28~FPS no HUD. Em hardware comum com aceleração
 gráfica, a taxa é limitada pelo sincronismo da tela. O seletor de qualidade reduz a razão
 de pixels do renderizador quando necessário, e o medidor de FPS do HUD permite ao usuário
 calibrar o ajuste.
@@ -667,12 +720,20 @@ avançado com movimento acelerado (hiperbólico), este último já fora do escop
         Physik}, 17, 891--921.
   \item Griffiths, D.J. (2017). \emph{Introduction to Electrodynamics}. 4th ed.
         Cambridge University Press, Cambridge.
+  \item Kortemeyer, G., Tan, P. e Schirra, S. (2013). A Slower Speed of Light: developing
+        intuition about special relativity with games. In \emph{Proceedings of the 8th
+        International Conference on the Foundations of Digital Games (FDG 2013)},
+        400--402. SASDG, Chania, Grécia.
   \item Michelson, A.A. e Morley, E.W. (1887). On the relative motion of the Earth and
         the luminiferous ether. \emph{American Journal of Science}, 34, 333--345.
+  \item MIT Game Lab (2013). \emph{OpenRelativity} [software]. Massachusetts Institute of
+        Technology. Licença MIT. \url{https://github.com/MITGameLab/OpenRelativity}.
   \item Nussenzveig, H.M. (2014). \emph{Curso de Física Básica, vol. 4: Ótica,
         Relatividade, Física Quântica}. 2ª ed. Blucher, São Paulo.
   \item Penrose, R. (1959). The apparent shape of a relativistically moving sphere.
         \emph{Proceedings of the Cambridge Philosophical Society}, 55(1), 137--139.
+  \item Sherin, Z.W., Cheu, R., Tan, P. e Kortemeyer, G. (2016). Visualizing relativity:
+        the OpenRelativity project. \emph{American Journal of Physics}, 84(5), 369--374.
   \item Terrell, J. (1959). Invisibility of the Lorentz contraction. \emph{Physical
         Review}, 116(4), 1041--1045.
   \item Wyman, C., Sloan, P.-P. e Shirley, P. (2013). Simple analytic approximations to

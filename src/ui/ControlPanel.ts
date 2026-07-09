@@ -1,5 +1,6 @@
 import GUI from 'lil-gui';
 import type { Simulator } from '../engine/Simulator';
+import { getLang, setLang, t, type Lang } from './i18n';
 
 /** β correspondente a um dado γ:  β = sqrt(1 − 1/γ²). */
 function betaForGamma(g: number): number {
@@ -9,53 +10,60 @@ function betaForGamma(g: number): number {
 /**
  * Painel de controle (lil-gui) ligado ao simulador. Os controles são
  * SENSÍVEIS AO MODO: só aparecem os parâmetros relevantes ao modo atual.
+ * Na troca de idioma o painel inteiro é reconstruído (ver main.ts).
  */
 export function createControlPanel(sim: Simulator): GUI {
-  const gui = new GUI({ title: 'Controles' });
+  const gui = new GUI({ title: t('panelTitle') });
   const s = sim.state;
 
-  // ── Modo (no topo) ──
+  // ── Idioma (no topo) ──
+  gui
+    .add({ lang: getLang() }, 'lang', { Português: 'pt', English: 'en' })
+    .name(t('language'))
+    .onChange((l: Lang) => setLang(l));
+
+  // ── Modo ──
   gui
     .add(s, 'mode', {
-      'Laboratório (orbital)': 'lab',
-      'Olho do observador': 'eye',
-      'Primeira pessoa (WASD)': 'firstPerson',
+      [t('modeLab')]: 'lab',
+      [t('modeEye')]: 'eye',
+      [t('modeFp')]: 'firstPerson',
     })
-    .name('modo')
+    .name(t('mode'))
     .onChange(() => applyVisibility());
 
   // ── Velocidade ──
-  const fVel = gui.addFolder('Velocidade');
-  const cBeta = fVel.add(s, 'betaMag', 0, 0.9999, 0.0001).name('β = v/c');
+  const fVel = gui.addFolder(t('folderSpeed'));
+  const cBeta = fVel.add(s, 'betaMag', 0, 0.9999, 0.0001).name(t('beta'));
   const setBeta = (b: number) => {
     s.betaMag = b;
     cBeta.updateDisplay();
   };
-  const cP0 = fVel.add({ fn: () => setBeta(0) }, 'fn').name('atalho: β = 0');
-  const cP2 = fVel.add({ fn: () => setBeta(betaForGamma(2)) }, 'fn').name('atalho: γ = 2');
-  const cP5 = fVel.add({ fn: () => setBeta(betaForGamma(5)) }, 'fn').name('atalho: γ = 5');
-  const cP10 = fVel.add({ fn: () => setBeta(betaForGamma(10)) }, 'fn').name('atalho: γ = 10');
-  const cAxis = fVel.add(s, 'betaAxis', ['x', 'y', 'z']).name('direção');
-  const cWalk = fVel.add(sim.fp, 'walkBeta', 0, 0.99, 0.001).name('velocidade (β)');
+  const cP0 = fVel.add({ fn: () => setBeta(0) }, 'fn').name(t('presetB0'));
+  const cP2 = fVel.add({ fn: () => setBeta(betaForGamma(2)) }, 'fn').name(t('presetG2'));
+  const cP5 = fVel.add({ fn: () => setBeta(betaForGamma(5)) }, 'fn').name(t('presetG5'));
+  const cP10 = fVel.add({ fn: () => setBeta(betaForGamma(10)) }, 'fn').name(t('presetG10'));
+  const cAxis = fVel.add(s, 'betaAxis', ['x', 'y', 'z']).name(t('axis'));
+  const cWalk = fVel.add(sim.fp, 'walkBeta', 0, 0.99, 0.001).name(t('walk'));
 
   // ── Efeitos relativísticos (todos os modos) ──
-  const fFx = gui.addFolder('Efeitos relativísticos');
-  fFx.add(s, 'contraction').name('contração de Lorentz');
-  fFx.add(s, 'aberration').name('aberração (o que se vê)');
-  fFx.add(s, 'doppler').name('Doppler (cor)');
-  fFx.add(s, 'beaming').name('beaming (holofote)');
+  const fFx = gui.addFolder(t('folderFx'));
+  fFx.add(s, 'contraction').name(t('fxContraction'));
+  fFx.add(s, 'aberration').name(t('fxAberration'));
+  fFx.add(s, 'doppler').name(t('fxDoppler'));
+  fFx.add(s, 'beaming').name(t('fxBeaming'));
 
   // ── Mais (avançado, recolhido) ──
-  const fMore = gui.addFolder('Mais');
+  const fMore = gui.addFolder(t('folderMore'));
   fMore
-    .add(s, 'quality', { Alta: 'alta', Baixa: 'baixa' })
-    .name('qualidade (↑FPS)')
+    .add(s, 'quality', { [t('qualityHigh')]: 'alta', [t('qualityLow')]: 'baixa' })
+    .name(t('quality'))
     .onChange((v: 'alta' | 'baixa') => sim.setQuality(v));
-  const cLook = fMore.add(sim.fp, 'lookSpeed', 0.0005, 0.006, 0.0001).name('sensib. mouse');
-  fMore.add(s, 'c', 4, 60, 1).name('c · vel. da luz (unid./s)');
-  fMore.add(s, 'animate').name('relógios correndo');
-  fMore.add({ fn: () => sim.resetClocks() }, 'fn').name('⟲ zerar relógios');
-  fMore.add({ fn: () => sim.resetCamera() }, 'fn').name('⌖ recentralizar câmera');
+  const cLook = fMore.add(sim.fp, 'lookSpeed', 0.0005, 0.006, 0.0001).name(t('lookSpeed'));
+  fMore.add(s, 'c', 4, 60, 1).name(t('cLabel'));
+  fMore.add(s, 'animate').name(t('clocksRunning'));
+  fMore.add({ fn: () => sim.resetClocks() }, 'fn').name(t('resetClocks'));
+  fMore.add({ fn: () => sim.resetCamera() }, 'fn').name(t('resetCamera'));
   fMore.close();
 
   // ── Visibilidade por modo ──
